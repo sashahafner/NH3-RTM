@@ -1,0 +1,115 @@
+---
+title: 'Demo'
+output: pdf_document
+author: Sasha D. Hafner
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+
+Some example calls of NH3/CO2/slurry pH model.
+
+Load all functions
+```{r}
+source('../R/NH3_mods.R')
+```
+
+Use eqSpec to calculate equilibrium speciation
+```{r}
+eq <- eqSpec(tot = c(H. = -0.02, NH3 = 0.1, H2CO3 = 0.1, K. = 0.03, 
+                     Na. = 0.02, Cl. = 0.03, HAc = 0.0242), 
+             temp.c = 20, of = 'all')
+eq
+```
+
+Some info on arguments: tot = molalities (concentration in mol/kg water) of "components" (elements here, but not below, each represented by a "master species"), temp.c = temperature in C, of = output format ('all' is the most complete).
+
+Here is some info on the ouput from eqSpec
+```{r}
+names(eq)
+```
+
+m = molalities of species (conc. in mol/kg water), a = activities of species, g = activity coefficients, i = ionic strength, l.m = log molalities, l.a = log activities, tot = molalities of components (e.g., H2CO3 = TIC, NH3 = TAN), totk = similar to tot but here H2CO3 (i.e., H2CO3, HCO3-, and CO3-2 species) and CO2 (only CO2 (aq)) are listed separately--totk is only used to get totals for kinetic model where there are two IC components, cb = charge (un)balance, i.its = iterations used for ionic strength to stabilize, p.CO2 = equilibrium CO2 partial pressure
+```{r}
+str(eq)
+eq
+```
+
+If you specify a pH, KOH or HAc (acetic acid) will be added to match it, so this call is essentially identical
+```{r}
+eq <- eqSpec(tot = c(H. = -0.02, NH3 = 0.1, H2CO3 = 0.1, 
+                     K. = 0.03, Na. = 0.02, Cl. = 0.03, 
+                     HAc = 0.0), 
+             temp.c = 20, pH = 7.5, of = 'all')
+```
+
+Here we will extract total component concentrations for use in kinetic model (only difference from tot argument in call above is partitioning of H2CO3)
+```{r}
+itot <- eq$totk
+```
+
+itot is initial total concentration of components (including distribution of IC between H2CO3 and CO2, which are not necessarily in equilibrium in simulation below)
+```{r}
+itot
+```
+
+Now for the emission model (note that there is also an equilibrium version eqEmisDiffMod())
+Next call predicts changes in solution chemistry as CO2 and NH3 are emitted from surface, assuming no carbonic anhydrase (that what the "kin" is for--kinetic)
+
+May take 30 sec to run
+```{r}
+pred <- kinEmisDiffMod(c.thk = c(rep(1E-5, 5), rep(1E-4, 5), rep(9.45E-4, 10)), 
+                       h.m = 1E-3, p.CO2.a = 4E-6, 
+                       times = c(0:5*600, 1:12*3600), temp.c = 20, tot = itot)
+```
+
+Some info on arguments: c.thk = a vector of cell thicknesses in m (more and smaller is more accurate and slower), h.m = convective mass transfer coefficient in air for NH3 (m/s), p.CO2.a = ambient CO2 partial pressure (atm), temp.c = temperature in C, tot = molalities of components (usual length 8 vector and MUST be in order: "H.", "NH3", "H2CO3", "CO2", "K.", "Na.", "Cl.", "HAc")  
+
+Info on the ouput
+Complete output
+```{r}
+names(pred)
+```
+times = times, pos = cell positions (cell centers), tot.k = molalities of components that change with time (NH3, CO2, H2CO3) and note that msp stands for "master species", tot.f = molalities of compnents that are fixed (all other components are not transported, because there is no emission, and this model does not include "multi-component diffusion"), act = activities of each species, ph = pH at all locations and times, kin.CO2 = CO2 (aq) hydration rate (I think...need to check), emis = emission rates and cumulatives (a data frame).
+str(pred)
+
+Extact times
+```{r}
+tt <- pred$times
+```
+position (center of cells) converted to mm
+```{r}
+z <- pred$pos*1000
+```
+and pH
+```{r}
+ph <- pred$ph
+```
+
+Plot pH
+```{r}
+matplot(t(ph), z, type = 'l', ylim = c(10, 0))
+```
+
+"Surface" pH over time
+```{r}
+plot(tt, ph[, 1], type = 'o')
+```
+
+Get fluxes
+```{r}
+pred$emis
+```
+
+Plot NH3 flux
+```{r}
+plot(j.NH3 ~ t, data = pred$emis)
+```
+
+and cumulative emission
+```{r}
+plot(e.NH3 ~ t, data = pred$emis)
+```
+
+
+
+
